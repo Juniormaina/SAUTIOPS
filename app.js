@@ -3,14 +3,29 @@ const $ = (selector) => document.querySelector(selector);
 const voiceButton = $("#voice-button");
 const voiceButtonLabel = $("#voice-button-label");
 const stateBadge = $("#state-badge");
+const stateHint = $("#state-hint");
 const errorBox = $("#error-box");
 const userTranscript = $("#user-transcript");
 const agentTranscript = $("#agent-transcript");
 const connectionDot = $("#connection-dot");
 const connectionLabel = $("#connection-label");
+const feedDot = $("#feed-dot");
+const feedLabel = $("#feed-label");
 const ticketsContainer = $("#tickets");
 const activityContainer = $("#activity");
 const ticketCount = $("#ticket-count");
+const copyToast = $("#copy-toast");
+const demoSteps = $("#demo-steps");
+const pipelineSteps = document.querySelectorAll("[data-pipe]");
+
+const STATE_HINTS = {
+  READY: "Press start, allow the mic, then describe what’s going wrong.",
+  LISTENING: "Listening — speak naturally, interrupt anytime.",
+  THINKING: "Working out the next question or action…",
+  ACTION: "Calling the backend to create, list, or close work…",
+  SPEAKING: "SautiOps is answering — you can interrupt.",
+  ERROR: "Something broke. End voice if needed, then try again.",
+};
 
 let ws = null;
 let audioContext = null;
@@ -20,16 +35,65 @@ let ready = false;
 let ending = false;
 let playbackTime = 0;
 const playbackSources = new Set();
+let knownTicketIds = new Set();
+let eventSource = null;
+let feedRetryMs = 1000;
+let copyToastTimer = null;
 
 function setState(state, detail = null) {
   stateBadge.textContent = state;
   stateBadge.className = `state ${state.toLowerCase()}`;
+  if (stateHint) {
+    stateHint.textContent = STATE_HINTS[state] || STATE_HINTS.READY;
+  }
+  updatePipeline(state);
+  voiceButton.classList.toggle("listening-glow", state === "LISTENING");
+  userTranscript.parentElement?.classList.toggle(
+    "is-live",
+    state === "LISTENING",
+  );
+  agentTranscript.parentElement?.classList.toggle(
+    "is-live",
+    state === "SPEAKING" || state === "ACTION",
+  );
   if (detail) showError(detail);
+}
+
+function updatePipeline(state) {
+  const order = ["speak", "confirm", "track", "handover"];
+  let active = "speak";
+  if (state === "THINKING" || state === "SPEAKING") active = "confirm";
+  if (state === "ACTION") active = "track";
+  if (state === "LISTENING" && knownTicketIds.size > 0) active = "handover";
+  if (state === "READY" && knownTicketIds.size > 0) active = "handover";
+  if (state === "READY" && knownTicketIds.size === 0) active = "speak";
+
+  const activeIndex = order.indexOf(active);
+  pipelineSteps.forEach((node) => {
+    const key = node.getAttribute("data-pipe");
+    const index = order.indexOf(key);
+    node.classList.toggle("is-active", key === active);
+    node.classList.toggle("is-done", index < activeIndex);
+  });
 }
 
 function setConnected(connected) {
   connectionDot.classList.toggle("connected", connected);
-  connectionLabel.textContent = connected ? "Connected" : "Disconnected";
+  connectionDot.classList.remove("reconnecting");
+  connectionLabel.textContent = connected ? "Voice live" : "Voice idle";
+}
+
+function setFeedStatus(status) {
+  feedDot.classList.remove("connected", "reconnecting");
+  if (status === "live") {
+    feedDot.classList.add("connected");
+    feedLabel.textContent = "Feed live";
+  } else if (status === "reconnecting") {
+    feedDot.classList.add("reconnecting");
+    feedLabel.textContent = "Feed reconnecting";
+  } else {
+    feedLabel.textContent = "Feed idle";
+  }
 }
 
 function showError(message) {
@@ -58,6 +122,10 @@ function escapeHtml(value) {
   return div.innerHTML;
 }
 
+function formatAction(action) {
+  return String(action || "event").replaceAll("_", " ");
+}
+
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
   const body = await response.json().catch(() => ({}));
@@ -67,23 +135,62 @@ async function fetchJson(url, options) {
   return body;
 }
 
-async function refreshDashboard() {
+function updateDemoProgress(tickets, activity) {
+  if (!demoSteps) return;
+  const created = activity.some((item) => item.action === "ticket_created");
+  const viewed = activity.some((item) => item.action === "tickets_viewed");
+  const closed = activity.some((item) => item.action === "ticket_closed");
+
+  let current = 1;
+  if (created) current = 2;
+  if (created && tickets.length > 0) current = 3;
+  if (viewed) current = 4;
+  if (closed) current = closed && tickets.length === 0 ? 1 : 4;
+
+  demoSteps.querySelectorAll("li").forEach((item) => {
+    const step = Number(item.dataset.step);
+    item.classList.toggle("is-current", step === current);
+    item.classList.toggle(
+      "is-done",
+      (step === 1 && created) ||
+        (step === 2 && created) ||
+        (step === 3 && viewed) ||
+        (step === 4 && closed),
+    );
+  });
+}
+
+async function refreshDashboard({ flashNew = false } = {}) {
   try {
     const [tickets, activity] = await Promise.all([
       fetchJson("/tickets?status=open"),
       fetchJson("/activity?limit=12"),
     ]);
 
+    const nextIds = new Set(tickets.map((ticket) => ticket.ticket_id));
+    const brandNew = [...nextIds].filter((id) => !knownTicketIds.has(id));
+    knownTicketIds = nextIds;
+
     ticketCount.textContent = tickets.length;
+    if (flashNew && brandNew.length) {
+      ticketCount.classList.add("bump");
+      window.setTimeout(() => ticketCount.classList.remove("bump"), 280);
+    }
+
     ticketsContainer.innerHTML = tickets.length
       ? tickets
           .map(
             (ticket) => `
-              <article class="ticket">
+              <article class="ticket${
+                flashNew && brandNew.includes(ticket.ticket_id)
+                  ? " is-flash"
+                  : ""
+              }">
                 <div class="ticket-id">${escapeHtml(ticket.ticket_id)}</div>
                 <div>
                   <h3>${escapeHtml(ticket.title)}</h3>
                   <div class="meta">
+                    ${escapeHtml(ticket.category)} ·
                     ${escapeHtml(ticket.location)} ·
                     OPEN · ${escapeHtml(formatTime(ticket.created_at))}
                   </div>
@@ -95,13 +202,16 @@ async function refreshDashboard() {
             `,
           )
           .join("")
-      : '<p class="empty">No open tickets.</p>';
+      : '<p class="empty">No open tickets — report one by voice.</p>';
 
     activityContainer.innerHTML = activity.length
       ? activity
           .map(
             (item) => `
               <article class="activity">
+                <span class="activity-action">${escapeHtml(
+                  formatAction(item.action),
+                )}</span>
                 <p>${escapeHtml(item.detail)}</p>
                 <time>${escapeHtml(formatTime(item.created_at))}</time>
               </article>
@@ -109,8 +219,12 @@ async function refreshDashboard() {
           )
           .join("")
       : '<p class="empty">No activity yet.</p>';
+
+    updateDemoProgress(tickets, activity);
+    updatePipeline(stateBadge.textContent || "READY");
   } catch (error) {
-    showError(`Dashboard refresh failed: ${error.message}`);
+    console.warn("Dashboard refresh failed:", error);
+    setFeedStatus("reconnecting");
   }
 }
 
@@ -184,11 +298,28 @@ async function cleanup() {
     await audioContext.close();
   }
   audioContext = null;
+
+  if (ws) {
+    ws.onopen = null;
+    ws.onmessage = null;
+    ws.onerror = null;
+    ws.onclose = null;
+    if (
+      ws.readyState === WebSocket.OPEN ||
+      ws.readyState === WebSocket.CONNECTING
+    ) {
+      try {
+        ws.close();
+      } catch {
+        // Ignore close races.
+      }
+    }
+  }
   ws = null;
   ending = false;
 
   voiceButton.disabled = false;
-  voiceButton.classList.remove("active");
+  voiceButton.classList.remove("active", "listening-glow");
   voiceButtonLabel.textContent = "START VOICE";
   if (!errorBox.classList.contains("hidden")) return;
   setState("READY");
@@ -239,7 +370,7 @@ function handleMessage(message) {
     case "reply.done":
       if (message.status === "interrupted") flushPlayback();
       setState("LISTENING");
-      refreshDashboard();
+      refreshDashboard({ flashNew: true });
       break;
 
     case "session.error":
@@ -251,7 +382,7 @@ function handleMessage(message) {
 
     case "session.ended":
       cleanup();
-      refreshDashboard();
+      refreshDashboard({ flashNew: true });
       break;
 
     default:
@@ -260,9 +391,14 @@ function handleMessage(message) {
 }
 
 async function startVoice() {
+  if (ws) return;
+
   voiceButton.disabled = true;
   clearError();
   setState("THINKING");
+  setConnected(false);
+  connectionDot.classList.add("reconnecting");
+  connectionLabel.textContent = "Voice connecting…";
   agentTranscript.textContent = "Connecting to SautiOps…";
 
   try {
@@ -271,7 +407,7 @@ async function startVoice() {
       fetchJson("/api/config"),
     ]);
 
-    audioContext = new AudioContext();
+    audioContext = new AudioContext({ sampleRate: 48000 });
     await audioContext.resume();
     await audioContext.audioWorklet.addModule("/pcm-processor.js");
 
@@ -284,16 +420,12 @@ async function startVoice() {
     });
 
     const source = audioContext.createMediaStreamSource(mediaStream);
-    worklet = new AudioWorkletNode(
-      audioContext,
-      "pcm-processor",
-      {
-        processorOptions: {
-          inputSampleRate: audioContext.sampleRate,
-          targetSampleRate: 24000,
-        },
+    worklet = new AudioWorkletNode(audioContext, "pcm-processor", {
+      processorOptions: {
+        inputSampleRate: audioContext.sampleRate,
+        targetSampleRate: 24000,
       },
-    );
+    });
 
     const silentGain = audioContext.createGain();
     silentGain.gain.value = 0;
@@ -325,16 +457,28 @@ async function startVoice() {
     });
 
     ws.addEventListener("message", (event) => {
-      handleMessage(JSON.parse(event.data));
+      try {
+        handleMessage(JSON.parse(event.data));
+      } catch (error) {
+        console.warn("Ignoring malformed voice message", error);
+      }
     });
 
     ws.addEventListener("error", () => {
-      showError("The voice connection failed. Try starting a new session.");
+      if (!ending) {
+        showError("The voice connection failed. Try starting a new session.");
+      }
     });
 
     ws.addEventListener("close", async () => {
       if (!ending && ready) {
-        showError("The voice session disconnected.");
+        showError(
+          "The voice session disconnected. Press START VOICE to reconnect.",
+        );
+      } else if (!ending && !ready) {
+        showError(
+          "Could not finish connecting to the voice agent. Check the agent ID and try again.",
+        );
       }
       await cleanup();
     });
@@ -346,6 +490,8 @@ async function startVoice() {
       showError(
         "Microphone permission was denied. Allow microphone access and try again.",
       );
+    } else if (error.name === "NotFoundError") {
+      showError("No microphone was found on this device.");
     } else {
       showError(error.message || "Could not start the voice session.");
     }
@@ -359,12 +505,40 @@ function endVoice() {
   voiceButton.disabled = true;
   setState("THINKING");
   if (ws?.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "session.end" }));
-    window.setTimeout(cleanup, 3000);
+    try {
+      ws.send(JSON.stringify({ type: "session.end" }));
+    } catch {
+      // Fall through to cleanup timeout.
+    }
+    window.setTimeout(() => {
+      cleanup();
+    }, 3000);
   } else {
     cleanup();
   }
 }
+
+function showCopyToast(message) {
+  if (!copyToast) return;
+  copyToast.textContent = message;
+  copyToast.classList.remove("hidden");
+  window.clearTimeout(copyToastTimer);
+  copyToastTimer = window.setTimeout(() => {
+    copyToast.classList.add("hidden");
+  }, 2200);
+}
+
+demoSteps?.addEventListener("click", async (event) => {
+  const button = event.target.closest(".demo-step-btn");
+  if (!button) return;
+  const text = button.dataset.copy || "";
+  try {
+    await navigator.clipboard.writeText(text);
+    showCopyToast("Copied — say it to SautiOps, or keep it as a prompt.");
+  } catch {
+    showCopyToast(text);
+  }
+});
 
 voiceButton.addEventListener("click", () => {
   if (ws) endVoice();
@@ -372,23 +546,50 @@ voiceButton.addEventListener("click", () => {
 });
 
 window.addEventListener("pagehide", () => {
+  ending = true;
   if (ws?.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "session.end" }));
+    try {
+      ws.send(JSON.stringify({ type: "session.end" }));
+    } catch {
+      // Best-effort end on unload.
+    }
   }
+  mediaStream?.getTracks().forEach((track) => track.stop());
 });
 
 function connectLiveUpdates() {
-  const source = new EventSource("/events");
-  const refresh = () => {
-    refreshDashboard();
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+
+  setFeedStatus("reconnecting");
+  eventSource = new EventSource("/events");
+
+  const onUpdate = () => {
+    setFeedStatus("live");
+    feedRetryMs = 1000;
+    refreshDashboard({ flashNew: true });
   };
-  source.addEventListener("ticket.created", refresh);
-  source.addEventListener("ticket.closed", refresh);
-  source.addEventListener("connected", refresh);
-  source.onerror = () => {
+
+  eventSource.addEventListener("ticket.created", onUpdate);
+  eventSource.addEventListener("ticket.closed", onUpdate);
+  eventSource.addEventListener("connected", () => {
+    setFeedStatus("live");
+    feedRetryMs = 1000;
+    refreshDashboard();
+  });
+
+  eventSource.onerror = () => {
+    setFeedStatus("reconnecting");
+    eventSource?.close();
+    eventSource = null;
+    window.setTimeout(connectLiveUpdates, feedRetryMs);
+    feedRetryMs = Math.min(feedRetryMs * 2, 15000);
     refreshDashboard();
   };
 }
 
 refreshDashboard();
 connectLiveUpdates();
+setState("READY");

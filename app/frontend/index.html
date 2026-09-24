@@ -7,6 +7,12 @@
       content="width=device-width, initial-scale=1"
     />
     <title>SautiOps — Voice Operations Desk</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -14,33 +20,69 @@
       <div>
         <div class="eyebrow">VOICE OPERATIONS DESK</div>
         <h1>SautiOps</h1>
-        <p>Speak it. Track it. Hand it over.</p>
+        <p>Speak an incident. Get a tracked ticket. Hand over live work.</p>
       </div>
-      <div class="connection">
-        <span id="connection-dot" class="dot"></span>
-        <span id="connection-label">Disconnected</span>
+      <div class="status-cluster">
+        <div class="connection" title="AssemblyAI voice session">
+          <span id="connection-dot" class="dot"></span>
+          <span id="connection-label">Voice idle</span>
+        </div>
+        <div class="connection" title="Live ticket feed">
+          <span id="feed-dot" class="dot"></span>
+          <span id="feed-label">Feed idle</span>
+        </div>
       </div>
     </header>
+
+    <section class="value-strip" aria-label="Why SautiOps">
+      <div class="value-item">
+        <strong>Skip the form</strong>
+        <span>Report issues by talking — no typing mid-shift.</span>
+      </div>
+      <div class="value-item">
+        <strong>Protect stock &amp; safety</strong>
+        <span>Critical problems become tickets before they spread.</span>
+      </div>
+      <div class="value-item">
+        <strong>Cleaner handovers</strong>
+        <span>Next shift hears what’s still open, not a verbal dump.</span>
+      </div>
+    </section>
 
     <main>
       <section class="hero">
         <div class="voice-card">
+          <div class="pipeline" aria-hidden="true">
+            <span class="pipeline-step" data-pipe="speak">Speak</span>
+            <span class="pipeline-arrow">→</span>
+            <span class="pipeline-step" data-pipe="confirm">Confirm</span>
+            <span class="pipeline-arrow">→</span>
+            <span class="pipeline-step" data-pipe="track">Track</span>
+            <span class="pipeline-arrow">→</span>
+            <span class="pipeline-step" data-pipe="handover">Handover</span>
+          </div>
+
           <div>
             <div class="eyebrow">LIVE VOICE</div>
             <h2>Talk it through with SautiOps.</h2>
             <p class="muted">
-              Speak naturally about what’s going on. SautiOps will listen,
-              ask only what’s needed, confirm with you, and create a real
-              ticket.
+              Speak naturally. SautiOps listens, asks only what’s needed,
+              confirms with you, and creates a real ticket — forms never
+              enter the loop.
             </p>
           </div>
 
           <button id="voice-button" class="voice-button" type="button">
-            <span class="mic">●</span>
+            <span class="mic" aria-hidden="true"></span>
             <span id="voice-button-label">START VOICE</span>
           </button>
 
-          <div id="state-badge" class="state ready">READY</div>
+          <div class="state-row">
+            <div id="state-badge" class="state ready">READY</div>
+            <p id="state-hint" class="state-hint">
+              Press start, allow the mic, then describe what’s going wrong.
+            </p>
+          </div>
           <div id="error-box" class="error hidden" role="alert"></div>
 
           <div class="transcript-grid">
@@ -56,16 +98,50 @@
         </div>
 
         <aside class="demo-card">
-          <div class="eyebrow">DEMO FLOW</div>
-          <ol>
-            <li>Report the freezer problem.</li>
-            <li>Confirm the proposed ticket.</li>
-            <li>Ask for the next-shift handover.</li>
-            <li>Close the returned ticket.</li>
+          <div class="eyebrow">SELF-GUIDED DEMO</div>
+          <h2 class="demo-title">Four steps. Real tickets.</h2>
+          <ol id="demo-steps" class="demo-steps">
+            <li data-step="1" class="is-current">
+              <button type="button" class="demo-step-btn" data-copy="The freezer in the back room stopped cooling and some stock may be at risk.">
+                <span class="step-num">1</span>
+                <span class="step-body">
+                  <strong>Report the freezer</strong>
+                  <em>Tap to copy the sample line</em>
+                </span>
+              </button>
+            </li>
+            <li data-step="2">
+              <button type="button" class="demo-step-btn" data-copy="Yes, create that ticket.">
+                <span class="step-num">2</span>
+                <span class="step-body">
+                  <strong>Confirm the ticket</strong>
+                  <em>Say yes when SautiOps reads it back</em>
+                </span>
+              </button>
+            </li>
+            <li data-step="3">
+              <button type="button" class="demo-step-btn" data-copy="What is still open for the next shift?">
+                <span class="step-num">3</span>
+                <span class="step-body">
+                  <strong>Ask for handover</strong>
+                  <em>Live open work from the backend</em>
+                </span>
+              </button>
+            </li>
+            <li data-step="4">
+              <button type="button" class="demo-step-btn" data-copy="Close SO-0001. The freezer was repaired.">
+                <span class="step-num">4</span>
+                <span class="step-body">
+                  <strong>Close the ticket</strong>
+                  <em>Replace SO-0001 with the spoken ID</em>
+                </span>
+              </button>
+            </li>
           </ol>
+          <p id="copy-toast" class="copy-toast hidden" role="status">Copied — paste into your notes or just say it.</p>
           <p class="hint">
-            Try: “The freezer in the back room stopped cooling and
-            some stock may be at risk.”
+            Unique angle: voice-first ops logging replaces mid-shift forms.
+            Every spoken confirm becomes persistent work and an audit trail.
           </p>
         </aside>
       </section>
@@ -76,11 +152,12 @@
             <div>
               <div class="eyebrow">LIVE WORK</div>
               <h2>Open tickets</h2>
+              <p class="panel-sub">What the next shift still owns.</p>
             </div>
             <span id="ticket-count" class="count">0</span>
           </div>
           <div id="tickets" class="ticket-list">
-            <p class="empty">No open tickets.</p>
+            <p class="empty">No open tickets — report one by voice.</p>
           </div>
         </div>
 
@@ -89,6 +166,7 @@
             <div>
               <div class="eyebrow">AUDIT TRAIL</div>
               <h2>Recent activity</h2>
+              <p class="panel-sub">Created · viewed · closed — proof of work.</p>
             </div>
           </div>
           <div id="activity" class="activity-list">

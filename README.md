@@ -1,6 +1,6 @@
 SautiOps turns spoken operational problems into persistent work.
 
-A worker reports an issue conversationally. The managed voice agent asks only for missing details, confirms the proposed ticket, and invokes authenticated HTTP tools. FastAPI validates and stores the ticket via SQLModel (SQLite by default). The same agent can retrieve current open work for handover and explicitly close a ticket. The dashboard receives live ticket updates over Server-Sent Events.
+Instead of mid-shift forms, a worker reports an issue conversationally. The voice agent asks only for missing details, confirms the proposed ticket, and invokes authenticated HTTP tools. FastAPI validates and stores the ticket via SQLModel (SQLite by default). The same agent can retrieve current open work for handover and explicitly close a ticket. The dashboard receives live ticket updates over Server-Sent Events — so the next shift sees tracked work, not a verbal dump.
 
 Architecture:
 
