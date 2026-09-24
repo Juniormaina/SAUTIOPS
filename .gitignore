@@ -10,3 +10,9 @@ data/
 *.db
 *.sqlite3
 .DS_Store
+node_modules/
+demos/.playwright-run/
+demos/*.webm
+demos/*.mp4
+!demos/README.md
+!demos/VOICEOVER.md

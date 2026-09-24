@@ -71,6 +71,14 @@ Run tests:
 
     pytest -q
 
+Record the 45-second demo video (API must be running):
+
+    npm install
+    npx playwright install chromium
+    npm run demo:record
+
+Narration cues live in `demos/VOICEOVER.md`. The recorder writes `demos/sautiops-demo.mp4`.
+
 API smoke test:
 
     curl http://localhost:8000/health

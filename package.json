@@ -1,0 +1,11 @@
+{
+  "name": "sautiops",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "demo:record": "node scripts/record-demo-video.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.55.0"
+  }
+}
