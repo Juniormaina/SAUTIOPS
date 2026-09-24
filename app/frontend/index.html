@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>SautiOps — Voice Operations Desk</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">VOICE OPERATIONS DESK</div>
+        <h1>SautiOps</h1>
+        <p>Speak it. Track it. Hand it over.</p>
+      </div>
+      <div class="connection">
+        <span id="connection-dot" class="dot"></span>
+        <span id="connection-label">Disconnected</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="voice-card">
+          <div>
+            <div class="eyebrow">LIVE VOICE</div>
+            <h2>Tell SautiOps what happened.</h2>
+            <p class="muted">
+              Describe an operational issue naturally. SautiOps will
+              clarify, confirm, and create tracked work.
+            </p>
+          </div>
+
+          <button id="voice-button" class="voice-button" type="button">
+            <span class="mic">●</span>
+            <span id="voice-button-label">START VOICE</span>
+          </button>
+
+          <div id="state-badge" class="state ready">READY</div>
+          <div id="error-box" class="error hidden" role="alert"></div>
+
+          <div class="transcript-grid">
+            <article>
+              <span class="label">YOU</span>
+              <p id="user-transcript">Your words will appear here.</p>
+            </article>
+            <article>
+              <span class="label">SAUTIOPS</span>
+              <p id="agent-transcript">Ready to receive a report.</p>
+            </article>
+          </div>
+        </div>
+
+        <aside class="demo-card">
+          <div class="eyebrow">DEMO FLOW</div>
+          <ol>
+            <li>Report the freezer problem.</li>
+            <li>Confirm the proposed ticket.</li>
+            <li>Ask for the next-shift handover.</li>
+            <li>Close the returned ticket.</li>
+          </ol>
+          <p class="hint">
+            Try: “The freezer in the back room stopped cooling and
+            some stock may be at risk.”
+          </p>
+        </aside>
+      </section>
+
+      <section class="workspace">
+        <div class="panel tickets-panel">
+          <div class="panel-heading">
+            <div>
+              <div class="eyebrow">LIVE WORK</div>
+              <h2>Open tickets</h2>
+            </div>
+            <span id="ticket-count" class="count">0</span>
+          </div>
+          <div id="tickets" class="ticket-list">
+            <p class="empty">No open tickets.</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-heading">
+            <div>
+              <div class="eyebrow">AUDIT TRAIL</div>
+              <h2>Recent activity</h2>
+            </div>
+          </div>
+          <div id="activity" class="activity-list">
+            <p class="empty">No activity yet.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: sautiops
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DATABASE_PATH
+        value: /var/data/sautiops.db
+      - key: ASSEMBLYAI_API_KEY
+        sync: false
+      - key: ASSEMBLYAI_AGENT_ID
+        sync: false
+      - key: SAUTIOPS_PUBLIC_URL
+        sync: false
+      - key: TOOL_BEARER_TOKEN
+        generateValue: true
+    disk:
+      name: sautiops-data
+      mountPath: /var/data
+      sizeGB: 1

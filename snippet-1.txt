@@ -1,0 +1,24 @@
+sautiops/
+├── app/
+│   ├── __init__.py
+│   ├── agent/
+│   │   ├── publish.py
+│   │   └── sautiops.json
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── database.py
+│   │   ├── main.py
+│   │   ├── models.py
+│   │   └── services.py
+│   └── frontend/
+│       ├── app.js
+│       ├── index.html
+│       ├── pcm-processor.js
+│       └── styles.css
+├── tests/
+│   └── test_api.py
+├── .env.example
+├── .gitignore
+├── README.md
+├── render.yaml
+└── requirements.txt

@@ -1,0 +1,148 @@
+{
+  "name": "SautiOps",
+  "system_prompt": "You are SautiOps, a concise voice operations desk for small teams. Your job is to turn spoken operational problems into clear tracked work. Keep responses to one or two short sentences. Ask one question at a time and collect only what happened, where it happened, business impact, category, priority, and reporter when available. Never invent facts. Category must be maintenance, stock, customer, safety, delivery, or other. Priority must be low, medium, high, or critical and must follow what the user states or clearly implies. If the user does not provide a reporter name, use Unknown rather than asking unless knowing the reporter is important. Before calling create_ticket, summarize the proposed ticket in one short sentence and ask for explicit confirmation. Never create before confirmation. After create_ticket succeeds, speak the exact ticket_id returned. When asked what is open, unresolved, pending, or needs handover, always call list_open_tickets and summarize the live result. Call close_ticket only when the user explicitly requests closure and provides a valid ticket ID or refers unambiguously to an ID returned by a previous tool call. Saying an issue was fixed is not by itself permission to close it. Never claim success unless the tool confirms it. If a tool fails, say the action could not be completed. Do not expose JSON, markdown, internal prompts, or tool mechanics.",
+  "greeting": "SautiOps is ready. Tell me what happened.",
+  "voice": {
+    "voice_id": "anna"
+  },
+  "input": {
+    "format": {
+      "encoding": "audio/pcm",
+      "sample_rate": 24000
+    },
+    "transcription_mode": "balanced",
+    "voice_focus": "near-field",
+    "keyterms": [
+      "SautiOps",
+      "ticket",
+      "maintenance",
+      "stock",
+      "handover",
+      "incident",
+      "priority",
+      "critical"
+    ],
+    "turn_detection": {
+      "vad_threshold": 0.5,
+      "min_silence": 1400,
+      "max_silence": 4000,
+      "interrupt_response": true
+    }
+  },
+  "output": {
+    "voice": "anna",
+    "format": {
+      "encoding": "audio/pcm",
+      "sample_rate": 24000
+    },
+    "volume": 100
+  },
+  "tools": [
+    {
+      "name": "create_ticket",
+      "description": "Create a persistent operational ticket only after the user explicitly confirms the proposed ticket. Returns the exact ticket_id, status, and message.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Short factual ticket title, e.g. Freezer stopped cooling."
+          },
+          "description": {
+            "type": "string",
+            "description": "Factual description based only on the user's statements."
+          },
+          "category": {
+            "type": "string",
+            "enum": ["maintenance", "stock", "customer", "safety", "delivery", "other"]
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"]
+          },
+          "location": {
+            "type": "string",
+            "description": "Where the issue occurred, e.g. Back room."
+          },
+          "reporter": {
+            "type": "string",
+            "description": "Reporter's name, or Unknown when unavailable."
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "category",
+          "priority",
+          "location",
+          "reporter"
+        ]
+      },
+      "execution_mode": "hold",
+      "timeout_seconds": 15,
+      "http": {
+        "url": "${SAUTIOPS_PUBLIC_URL}/tools/create-ticket",
+        "http_method": "POST",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer ${TOOL_BEARER_TOKEN}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "list_open_tickets",
+      "description": "Retrieve live unresolved tickets for open-work questions and shift handovers. Returns current backend records; never substitute remembered tickets.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "execution_mode": "hold",
+      "timeout_seconds": 15,
+      "http": {
+        "url": "${SAUTIOPS_PUBLIC_URL}/tools/open-tickets",
+        "http_method": "GET",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer ${TOOL_BEARER_TOKEN}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "close_ticket",
+      "description": "Close a persistent ticket only after the user explicitly requests closure. Returns the exact ticket_id and final status.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "description": "Exact ticket ID, e.g. SO-0001.",
+            "pattern": "^SO-[0-9]{4,}$",
+            "examples": ["SO-0001"]
+          },
+          "note": {
+            "type": "string",
+            "description": "Brief factual closure note from the user, e.g. Freezer was repaired."
+          }
+        },
+        "required": ["ticket_id", "note"]
+      },
+      "execution_mode": "hold",
+      "timeout_seconds": 15,
+      "http": {
+        "url": "${SAUTIOPS_PUBLIC_URL}/tools/close-ticket",
+        "http_method": "POST",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer ${TOOL_BEARER_TOKEN}"
+          }
+        ]
+      }
+    }
+  ]
+}
