@@ -377,5 +377,18 @@ window.addEventListener("pagehide", () => {
   }
 });
 
+function connectLiveUpdates() {
+  const source = new EventSource("/events");
+  const refresh = () => {
+    refreshDashboard();
+  };
+  source.addEventListener("ticket.created", refresh);
+  source.addEventListener("ticket.closed", refresh);
+  source.addEventListener("connected", refresh);
+  source.onerror = () => {
+    refreshDashboard();
+  };
+}
+
 refreshDashboard();
-window.setInterval(refreshDashboard, 4000);
+connectLiveUpdates();

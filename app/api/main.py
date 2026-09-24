@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import time
@@ -8,10 +9,11 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .database import initialize_database
+from .events import encode_sse, hub
 from .models import (
     Activity,
     Status,
@@ -42,6 +44,7 @@ FRONTEND = Path(__file__).resolve().parents[1] / "frontend"
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
+    hub.bind_loop(asyncio.get_running_loop())
     yield
 
 
@@ -61,6 +64,17 @@ def require_tool_secret(
         raise HTTPException(status_code=503, detail="Tool authentication unavailable.")
     if authorization != f"Bearer {expected}":
         raise HTTPException(status_code=401, detail="Unauthorized tool request.")
+
+
+def require_api_secret(
+    authorization: str | None = Header(default=None),
+) -> None:
+    expected = os.getenv("API_BEARER_TOKEN")
+    if not expected:
+        logger.error("API_BEARER_TOKEN is not configured")
+        raise HTTPException(status_code=503, detail="API authentication unavailable.")
+    if authorization != f"Bearer {expected}":
+        raise HTTPException(status_code=401, detail="Unauthorized API request.")
 
 
 @app.exception_handler(RequestValidationError)
@@ -155,9 +169,47 @@ async def voice_token() -> dict:
     return {"token": response.json()["token"]}
 
 
-@app.post("/tickets", response_model=TicketCreated, status_code=201)
+@app.get("/events")
+async def ticket_events(request: Request) -> StreamingResponse:
+    queue = hub.subscribe()
+
+    async def event_stream():
+        try:
+            yield encode_sse("connected")
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    message = await asyncio.wait_for(queue.get(), timeout=1.0)
+                    yield encode_sse(message["type"], message["data"])
+                except asyncio.TimeoutError:
+                    if await request.is_disconnected():
+                        break
+                    yield ": keepalive\n\n"
+        finally:
+            hub.unsubscribe(queue)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post(
+    "/tickets",
+    response_model=TicketCreated,
+    status_code=201,
+    dependencies=[Depends(require_api_secret)],
+)
 def create_ticket_endpoint(payload: TicketCreate) -> dict:
-    return create_ticket(payload)
+    result = create_ticket(payload)
+    hub.publish("ticket.created", {"ticket_id": result["ticket_id"]})
+    return result
 
 
 @app.get("/tickets", response_model=list[Ticket])
@@ -172,9 +224,15 @@ def get_ticket_endpoint(ticket_id: str) -> dict:
     return get_ticket(ticket_id)
 
 
-@app.post("/tickets/{ticket_id}/close", response_model=TicketClosed)
+@app.post(
+    "/tickets/{ticket_id}/close",
+    response_model=TicketClosed,
+    dependencies=[Depends(require_api_secret)],
+)
 def close_ticket_endpoint(ticket_id: str, payload: TicketClose) -> dict:
-    return close_ticket(ticket_id, payload)
+    result = close_ticket(ticket_id, payload)
+    hub.publish("ticket.closed", {"ticket_id": result["ticket_id"]})
+    return result
 
 
 @app.get("/activity", response_model=list[Activity])
@@ -193,6 +251,7 @@ def activity_endpoint(
 def tool_create_ticket(payload: TicketCreate) -> dict:
     logger.info("[TOOL] create_ticket")
     result = create_ticket(payload)
+    hub.publish("ticket.created", {"ticket_id": result["ticket_id"]})
     logger.info("[RESULT] %s", result["ticket_id"])
     return result
 
@@ -217,6 +276,7 @@ def tool_open_tickets() -> list[dict]:
 def tool_close_ticket(payload: ToolCloseTicket) -> dict:
     logger.info("[TOOL] close_ticket ticket_id=%s", payload.ticket_id)
     result = close_ticket(payload.ticket_id, TicketClose(note=payload.note))
+    hub.publish("ticket.closed", {"ticket_id": result["ticket_id"]})
     logger.info("[RESULT] %s", result["ticket_id"])
     return result
 

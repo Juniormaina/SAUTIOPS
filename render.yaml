@@ -10,6 +10,8 @@ services:
         value: 3.12.7
       - key: DATABASE_PATH
         value: /var/data/sautiops.db
+      - key: DATABASE_URL
+        value: sqlite:////var/data/sautiops.db
       - key: ASSEMBLYAI_API_KEY
         sync: false
       - key: ASSEMBLYAI_AGENT_ID
@@ -17,6 +19,8 @@ services:
       - key: SAUTIOPS_PUBLIC_URL
         sync: false
       - key: TOOL_BEARER_TOKEN
+        generateValue: true
+      - key: API_BEARER_TOKEN
         generateValue: true
     disk:
       name: sautiops-data

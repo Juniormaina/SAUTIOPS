@@ -1,6 +1,6 @@
 SautiOps turns spoken operational problems into persistent work.
 
-A worker reports an issue conversationally. The managed voice agent asks only for missing details, confirms the proposed ticket, and invokes authenticated HTTP tools. FastAPI validates and stores the ticket in SQLite. The same agent can retrieve current open work for handover and explicitly close a ticket.
+A worker reports an issue conversationally. The managed voice agent asks only for missing details, confirms the proposed ticket, and invokes authenticated HTTP tools. FastAPI validates and stores the ticket via SQLModel (SQLite by default). The same agent can retrieve current open work for handover and explicitly close a ticket. The dashboard receives live ticket updates over Server-Sent Events.
 
 Architecture:
 
@@ -14,8 +14,9 @@ Architecture:
           v
     FastAPI
           |
-          v
-    SQLite
+          +-- SQLModel --> SQLite (or Postgres via DATABASE_URL)
+          |
+          +-- SSE /events --> dashboard
 
 Requirements:
 
@@ -32,9 +33,11 @@ Copy `.env.example` to `.env`.
 - `ASSEMBLYAI_AGENT_ID`: populated after first publish
 - `SAUTIOPS_PUBLIC_URL`: public HTTPS root, without a trailing slash
 - `TOOL_BEARER_TOKEN`: long random secret shared only with stored HTTP tools
-- `DATABASE_PATH`: SQLite location
+- `API_BEARER_TOKEN`: long random secret for public REST ticket mutations
+- `DATABASE_URL`: SQLAlchemy URL (default `sqlite:///./data/sautiops.db`); use `postgresql+psycopg://…` for Postgres
+- `DATABASE_PATH`: legacy SQLite file path used only when `DATABASE_URL` is unset
 
-Generate a tool secret:
+Generate secrets:
 
     python -c "import secrets; print(secrets.token_urlsafe(32))"
 
@@ -73,6 +76,7 @@ API smoke test:
     curl http://localhost:8000/health
 
     curl -X POST http://localhost:8000/tickets \
+      -H "Authorization: Bearer $API_BEARER_TOKEN" \
       -H "Content-Type: application/json" \
       -d '{
         "title":"Freezer stopped cooling",
@@ -86,12 +90,13 @@ API smoke test:
     curl "http://localhost:8000/tickets?status=open"
 
     curl -X POST http://localhost:8000/tickets/SO-0001/close \
+      -H "Authorization: Bearer $API_BEARER_TOKEN" \
       -H "Content-Type: application/json" \
       -d '{"note":"The freezer was repaired."}'
 
 Deployment:
 
-Deploy this as one persistent Python web service. Set all five environment variables. SQLite requires a persistent disk; without one, tickets disappear on redeploy or instance replacement. After the public HTTPS deployment is live:
+Deploy this as one persistent Python web service. Set the environment variables above. SQLite requires a persistent disk; without one, tickets disappear on redeploy or instance replacement. After the public HTTPS deployment is live:
 
 1. Set `SAUTIOPS_PUBLIC_URL` to the deployment origin.
 2. Run the publisher locally using the same environment values.
@@ -114,16 +119,17 @@ Security:
 
 - The permanent API key remains on the FastAPI server.
 - The browser gets a single-use token with a 120-second redemption window.
-- Tool routes require a bearer secret not used by public ticket routes.
+- Tool routes require `TOOL_BEARER_TOKEN`.
+- Public ticket mutations require `API_BEARER_TOKEN`.
+- Dashboard reads and SSE stay unauthenticated so the browser never holds a secret.
 - Agent HTTP tools require public HTTPS.
 - Explicit call termination sends `session.end`.
 - Do not commit `.env` or the SQLite database.
 
 Known MVP limitations:
 
-- SQLite is appropriate for one persistent instance, not horizontally scaled replicas.
-- Public REST mutation endpoints are intentionally unauthenticated for a hackathon demo. Add application authentication before production use.
-- The browser polls dashboard state every four seconds because server-side HTTP tools do not execute in the browser.
+- SQLite is appropriate for one persistent instance, not horizontally scaled replicas. Point `DATABASE_URL` at Postgres when you need a shared database.
+- SSE live updates are in-process; multiple app replicas would need a shared pub/sub layer.
 - Agent publishing requires a public backend because HTTP tool hosts are validated.
 - Voice sessions need network access and account entitlement.
 - Automatic seed data is omitted so a clean database always starts with SO-0001.
